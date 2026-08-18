@@ -1,0 +1,62 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Car {
+  id           String   @id @default(cuid())
+  stockNo      String   @unique
+  brand        String
+  model        String
+  year         Int
+  regYear      Int
+  price        Int
+  mileage      Int
+  fuel         String
+  transmission String
+  engineCC     Int
+  color        String
+  condition    String
+  bodyType     String
+  auctionGrade String
+  status       String   @default("available") // available | reserved | sold
+  featured     Boolean  @default(false)
+  image        String?
+  desc         String
+  features     String[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  leads        Lead[]
+
+  @@index([status])
+  @@index([brand])
+}
+
+model Lead {
+  id        String   @id @default(cuid())
+  car       Car      @relation(fields: [carId], references: [id], onDelete: Cascade)
+  carId     String
+  name      String
+  phone     String
+  email     String?
+  message   String
+  type      String   @default("enquiry") // enquiry | testdrive
+  status    String   @default("new")     // new | contacted | closed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String   @default("customer") // customer | admin
+  createdAt    DateTime @default(now())
+}
