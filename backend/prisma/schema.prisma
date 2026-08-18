@@ -60,3 +60,12 @@ model User {
   role         String   @default("customer") // customer | admin
   createdAt    DateTime @default(now())
 }
+
+// Single row ("singleton") holding site-wide content the dealer can edit —
+// currently just the homepage hero photo. Add more fields here later for
+// other editable site content rather than creating new tables per field.
+model Setting {
+  id        String   @id @default("singleton")
+  heroImage String?
+  updatedAt DateTime @updatedAt
+}

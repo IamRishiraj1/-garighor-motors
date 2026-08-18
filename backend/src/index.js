@@ -8,6 +8,7 @@ const carRoutes = require("./routes/cars");
 const leadRoutes = require("./routes/leads");
 const chatRoutes = require("./routes/chat");
 const uploadRoutes = require("./routes/uploads");
+const settingsRoutes = require("./routes/settings");
 const { UPLOAD_DIR, DRIVER } = require("./middleware/upload");
 
 const app = express();
@@ -26,6 +27,7 @@ app.use("/api/cars", carRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/uploads", uploadRoutes);
+app.use("/api/settings", settingsRoutes);
 
 // 404 fallback for unmatched API routes
 app.use("/api", (req, res) => res.status(404).json({ error: "Not found." }));

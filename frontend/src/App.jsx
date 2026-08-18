@@ -67,11 +67,16 @@ async function apiFetch(path, { method = "GET", body, token } = {}) {
 
 // Wishlist is purely a local browser convenience — there's no backend model
 // for it, so it stays in localStorage rather than going through the API.
-function loadLocalWishlist() {
-  try { return JSON.parse(localStorage.getItem("ggm-wishlist") || "[]"); } catch (e) { return []; }
+// It's scoped per logged-in user (or "guest" when logged out) so switching
+// accounts on the same browser never shows someone else's saved cars.
+function wishlistKey(userId) {
+  return userId ? `ggm-wishlist:user:${userId}` : "ggm-wishlist:guest";
 }
-function saveLocalWishlist(list) {
-  try { localStorage.setItem("ggm-wishlist", JSON.stringify(list)); } catch (e) { /* best effort */ }
+function loadLocalWishlist(key) {
+  try { return JSON.parse(localStorage.getItem(key) || "[]"); } catch (e) { return []; }
+}
+function saveLocalWishlist(key, list) {
+  try { localStorage.setItem(key, JSON.stringify(list)); } catch (e) { /* best effort */ }
 }
 
 /* ---------------------------------- small UI atoms ---------------------------------- */
@@ -187,6 +192,7 @@ export default function App() {
   const [adminTab, setAdminTab] = useState("overview");
   const [editingCar, setEditingCar] = useState(null); // object -> edit, "new" -> new
   const isAdmin = profile?.role === "admin";
+  const [settings, setSettings] = useState(null); // { heroImage }
 
   const [filters, setFilters] = useState({ q: "", brand: "All", body: "All", fuel: "All", minPrice: "", maxPrice: "", sort: "newest" });
   const [wishlistOnly, setWishlistOnly] = useState(false);
@@ -199,23 +205,41 @@ export default function App() {
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef(null);
 
-  // On first load: fetch live inventory from the backend, restore the
-  // wishlist from localStorage (pruning any saved IDs for cars that no
-  // longer exist — e.g. deleted, or re-seeded with a new ID), and — if a
-  // session token was saved from a previous visit — restore the logged-in
-  // user by asking the API who owns it.
+  // On first load: fetch live inventory and site settings from the backend,
+  // restore the logged-in user (if a session token was saved from a
+  // previous visit), then load the wishlist scoped to whoever that is (or
+  // "guest" if no one's logged in) — pruning any saved IDs for cars that no
+  // longer exist, e.g. deleted, or re-seeded with a new ID.
   useEffect(() => {
     (async () => {
       let liveCars = null;
       try {
-        const result = await apiFetch("/cars");
-        liveCars = result.cars;
+        const [carsResult, settingsResult] = await Promise.all([
+          apiFetch("/cars"),
+          apiFetch("/settings").catch(() => ({ settings: null })), // non-critical — don't block the site on this
+        ]);
+        liveCars = carsResult.cars;
         setCars(liveCars);
+        setSettings(settingsResult.settings);
       } catch (e) {
         showToast("Could not reach the server — is the backend running?");
       }
 
-      const savedWishlist = loadLocalWishlist();
+      let resolvedUserId = null;
+      const savedToken = localStorage.getItem("ggm-token");
+      if (savedToken) {
+        try {
+          const { user } = await apiFetch("/auth/me", { token: savedToken });
+          setToken(savedToken);
+          setProfile(user);
+          resolvedUserId = user.id;
+        } catch (e) {
+          localStorage.removeItem("ggm-token"); // expired/invalid — drop it quietly
+        }
+      }
+
+      const key = wishlistKey(resolvedUserId);
+      const savedWishlist = loadLocalWishlist(key);
       if (liveCars) {
         // Only reconcile when we actually have authoritative data — if the
         // cars fetch failed, don't wipe someone's wishlist just because of
@@ -223,26 +247,16 @@ export default function App() {
         const validIds = new Set(liveCars.map((c) => c.id));
         const prunedWishlist = savedWishlist.filter((id) => validIds.has(id));
         setWishlist(prunedWishlist);
-        if (prunedWishlist.length !== savedWishlist.length) saveLocalWishlist(prunedWishlist);
+        if (prunedWishlist.length !== savedWishlist.length) saveLocalWishlist(key, prunedWishlist);
       } else {
         setWishlist(savedWishlist);
       }
 
-      const savedToken = localStorage.getItem("ggm-token");
-      if (savedToken) {
-        try {
-          const { user } = await apiFetch("/auth/me", { token: savedToken });
-          setToken(savedToken);
-          setProfile(user);
-        } catch (e) {
-          localStorage.removeItem("ggm-token"); // expired/invalid — drop it quietly
-        }
-      }
       setReady(true);
     })();
   }, []);
 
-  useEffect(() => { if (ready) saveLocalWishlist(wishlist); }, [wishlist, ready]);
+  useEffect(() => { if (ready) saveLocalWishlist(wishlistKey(profile?.id), wishlist); }, [wishlist, ready, profile?.id]);
   useEffect(() => { if (chatOpen) chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages, chatOpen, chatLoading]);
 
   // Admins need the leads inbox once they open the dealer console.
@@ -279,6 +293,17 @@ export default function App() {
   // Handles both the customer Login/Register modal AND the "Dealer login"
   // footer link, which reuses the same form — the backend account's role
   // decides whether the person lands back on the site or in the console.
+  // Loads whichever user's (or guest's) wishlist matches the given id,
+  // pruned against the currently-loaded cars. Called on login/logout so
+  // switching accounts on the same browser never leaks between wishlists.
+  function switchWishlistScope(userId) {
+    const key = wishlistKey(userId);
+    const saved = loadLocalWishlist(key);
+    const validIds = new Set(cars.map(c => c.id));
+    const pruned = saved.filter(id => validIds.has(id));
+    setWishlist(pruned);
+  }
+
   async function submitAuth(mode, form) {
     try {
       const path = mode === "login" ? "/auth/login" : "/auth/register";
@@ -287,6 +312,7 @@ export default function App() {
       setToken(newToken);
       setProfile(user);
       localStorage.setItem("ggm-token", newToken);
+      switchWishlistScope(user.id);
       setAuthMode(null);
       showToast(mode === "login" ? `Welcome back, ${user.name}` : "Account created - welcome to GariGhor Motors");
       if (user.role === "admin") { setView("admin"); setAdminTab("overview"); }
@@ -297,6 +323,7 @@ export default function App() {
 
   function logOut() {
     setToken(null); setProfile(null); localStorage.removeItem("ggm-token");
+    switchWishlistScope(null);
     setView("home"); showToast("Signed out.");
   }
 
@@ -339,6 +366,15 @@ export default function App() {
       setLeads(ls => ls.map(l => l.id === id ? { ...l, ...lead } : l));
     } catch (e) {
       showToast(e.message || "Could not update lead.");
+    }
+  }
+  async function updateHeroImage(url) {
+    try {
+      const { settings: updated } = await apiFetch("/settings", { method: "PUT", body: { heroImage: url }, token });
+      setSettings(updated);
+      showToast("Homepage photo updated.");
+    } catch (e) {
+      showToast(e.message || "Could not update homepage photo.");
     }
   }
 
@@ -400,7 +436,7 @@ export default function App() {
       )}
 
       {view === "home" && (
-        <HomePage cars={cars} goCatalog={goCatalog} onView={setSelectedCar} onToggleWish={toggleWish} wishlist={wishlist} setChatOpen={setChatOpen} />
+        <HomePage cars={cars} goCatalog={goCatalog} onView={setSelectedCar} onToggleWish={toggleWish} wishlist={wishlist} setChatOpen={setChatOpen} heroImage={settings?.heroImage} />
       )}
       {view === "catalog" && (
         <CatalogPage cars={filteredCars} total={cars.length} filters={filters} setFilters={setFilters}
@@ -413,6 +449,7 @@ export default function App() {
           onExit={() => { setView("home"); }} token={token}
           editingCar={editingCar} setEditingCar={setEditingCar} saveCar={saveCar}
           deleteCar={deleteCar} setCarStatus={setCarStatus} setLeadStatus={setLeadStatus}
+          heroImage={settings?.heroImage} onUpdateHeroImage={updateHeroImage}
         />
       )}
 
@@ -545,7 +582,7 @@ const ctaGhost = { background: "none", border: "1px solid #C9C3B2", padding: "9p
 
 /* ---------------------------------- home page ---------------------------------- */
 
-function HomePage({ cars, goCatalog, onView, onToggleWish, wishlist, setChatOpen }) {
+function HomePage({ cars, goCatalog, onView, onToggleWish, wishlist, setChatOpen, heroImage }) {
   const featured = cars.filter(c => c.featured).slice(0, 4);
   return (
     <main>
@@ -582,7 +619,7 @@ function HomePage({ cars, goCatalog, onView, onToggleWish, wishlist, setChatOpen
           </div>
           <div className="ggm-fade" style={{ animationDelay: ".1s" }}>
             <div style={{ borderRadius: 18, overflow: "hidden", border: "1px solid rgba(255,255,255,0.12)", height: 340 }}>
-              <Placeholder brand="Toyota" model="" />
+              {heroImage ? <img src={heroImage} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Placeholder brand="Toyota" model="" />}
             </div>
           </div>
         </div>
@@ -917,13 +954,31 @@ const linkBtn = { background: "none", border: "none", color: "#C98A3D", fontWeig
 
 /* ---------------------------------- admin dashboard ---------------------------------- */
 
-function AdminDashboard({ cars, leads, adminTab, setAdminTab, onExit, token, editingCar, setEditingCar, saveCar, deleteCar, setCarStatus, setLeadStatus }) {
+function AdminDashboard({ cars, leads, adminTab, setAdminTab, onExit, token, editingCar, setEditingCar, saveCar, deleteCar, setCarStatus, setLeadStatus, heroImage, onUpdateHeroImage }) {
   const available = cars.filter(c => c.status === "available").length;
   const reserved = cars.filter(c => c.status === "reserved").length;
   const sold = cars.filter(c => c.status === "sold").length;
   const inventoryValue = cars.filter(c => c.status !== "sold").reduce((s, c) => s + c.price, 0);
   const newLeads = leads.filter(l => l.status === "new").length;
   const [invSearch, setInvSearch] = useState("");
+  const [heroUploading, setHeroUploading] = useState(false);
+
+  async function handleHeroPhotoChange(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setHeroUploading(true);
+    try {
+      const data = new FormData();
+      data.append("image", file);
+      const { url } = await apiFetch("/uploads", { method: "POST", body: data, token });
+      await onUpdateHeroImage(url);
+    } catch (err) {
+      // onUpdateHeroImage / apiFetch already surface errors via toast at the App level
+    } finally {
+      setHeroUploading(false);
+      e.target.value = "";
+    }
+  }
 
   const tabs = [["overview", LayoutDashboard, "Overview"], ["inventory", Package, "Inventory"], ["leads", Users, "Leads", newLeads]];
 
@@ -960,6 +1015,19 @@ function AdminDashboard({ cars, leads, adminTab, setAdminTab, onExit, token, edi
               <StatCard icon={TrendingUp} label="Sold" value={sold} accent="#8A3418" />
               <StatCard icon={Users} label="New leads" value={newLeads} accent="#C98A3D" />
               <StatCard icon={BadgeCheck} label="Lot value (unsold)" value={formatBDT(inventoryValue)} isText />
+            </div>
+            <div style={{ background: "#FFFDF9", border: "1px solid #E4DFD2", borderRadius: 14, padding: 20, marginBottom: 20 }}>
+              <div style={{ fontWeight: 700, fontSize: 14.5, marginBottom: 4 }}>Homepage photo</div>
+              <div style={{ fontSize: 12.5, color: "#8A8578", marginBottom: 14 }}>The large photo shown in the homepage hero banner, next to "Every car inspected twice."</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ width: 120, height: 76, borderRadius: 10, overflow: "hidden", border: "1px solid #E4DFD2", flexShrink: 0, background: "#F2EEE3", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {heroImage ? <img src={heroImage} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Car size={20} color="#C9C3B2" />}
+                </div>
+                <div>
+                  <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handleHeroPhotoChange} disabled={heroUploading} style={{ fontSize: 12.5 }} />
+                  {heroUploading && <div style={{ fontSize: 11.5, color: "#8A8578", marginTop: 4, display: "flex", alignItems: "center", gap: 5 }}><Loader2 size={11} className="ggm-spin" /> Uploading...</div>}
+                </div>
+              </div>
             </div>
             <div style={{ background: "#FFFDF9", border: "1px solid #E4DFD2", borderRadius: 14, padding: 20 }}>
               <div style={{ fontWeight: 700, fontSize: 14.5, marginBottom: 14 }}>Recent enquiries</div>
