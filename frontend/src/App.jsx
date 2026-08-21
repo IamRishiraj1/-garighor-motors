@@ -30,7 +30,7 @@ function formatBDT(num) {
 }
 function formatKm(num) { return Number(num || 0).toLocaleString("en-US") + " km"; }
 function timeAgo(ts) {
-  const s = Math.floor((Date.now() - ts) / 1000);
+  const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
   if (s < 60) return "just now";
   if (s < 3600) return Math.floor(s / 60) + "m ago";
   if (s < 86400) return Math.floor(s / 3600) + "h ago";
@@ -983,28 +983,41 @@ function AdminDashboard({ cars, leads, adminTab, setAdminTab, onExit, token, edi
   const tabs = [["overview", LayoutDashboard, "Overview"], ["inventory", Package, "Inventory"], ["leads", Users, "Leads", newLeads]];
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#F3EFE6" }}>
-      <aside style={{ width: 210, background: "#14181F", color: "#F3EFE6", padding: "22px 16px", flexShrink: 0 }}>
-        <div style={{ marginBottom: 30, paddingLeft: 4 }}>
+    <div className="ggm-admin-shell" style={{ display: "flex", minHeight: "100vh", background: "#F3EFE6" }}>
+      <style>{`
+        @media (max-width: 780px) {
+          .ggm-admin-shell { flex-direction: column !important; }
+          .ggm-admin-aside { width: 100% !important; padding: 10px 12px !important; display: flex !important; align-items: center !important; gap: 8px !important; }
+          .ggm-admin-title { display: none !important; }
+          .ggm-admin-nav { display: flex !important; flex-direction: row !important; gap: 6px !important; overflow-x: auto !important; flex: 1 !important; }
+          .ggm-admin-navbtn { width: auto !important; white-space: nowrap !important; margin-bottom: 0 !important; padding: 8px 10px !important; }
+          .ggm-admin-divider { display: none !important; }
+          .ggm-admin-main { padding: 16px !important; }
+        }
+      `}</style>
+      <aside className="ggm-admin-aside" style={{ width: 210, background: "#14181F", color: "#F3EFE6", padding: "22px 16px", flexShrink: 0 }}>
+        <div className="ggm-admin-title" style={{ marginBottom: 30, paddingLeft: 4 }}>
           <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 10, letterSpacing: 2, color: "#C98A3D" }}>গাড়ি ঘর</div>
           <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 20 }}>DEALER CONSOLE</div>
         </div>
-        {tabs.map(([key, Icon, label, count]) => (
-          <button key={key} onClick={() => setAdminTab(key)} style={{
-            width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", borderRadius: 9,
-            background: adminTab === key ? "rgba(201,138,61,0.18)" : "transparent", border: "none", cursor: "pointer",
-            color: adminTab === key ? "#C98A3D" : "#C7C2B4", fontSize: 13.5, fontWeight: 600, marginBottom: 4, textAlign: "left",
-          }}>
-            <Icon size={16} /> {label} {count > 0 && <span style={{ marginLeft: "auto", background: "#C98A3D", color: "#14181F", fontSize: 10.5, padding: "1px 7px", borderRadius: 20, fontWeight: 800 }}>{count}</span>}
-          </button>
-        ))}
-        <div style={{ height: 1, background: "rgba(255,255,255,0.12)", margin: "16px 0" }} />
-        <button onClick={onExit} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", borderRadius: 9, background: "transparent", border: "none", cursor: "pointer", color: "#C7C2B4", fontSize: 13.5, fontWeight: 600 }}>
+        <div className="ggm-admin-nav">
+          {tabs.map(([key, Icon, label, count]) => (
+            <button key={key} className="ggm-admin-navbtn" onClick={() => setAdminTab(key)} style={{
+              width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", borderRadius: 9,
+              background: adminTab === key ? "rgba(201,138,61,0.18)" : "transparent", border: "none", cursor: "pointer",
+              color: adminTab === key ? "#C98A3D" : "#C7C2B4", fontSize: 13.5, fontWeight: 600, marginBottom: 4, textAlign: "left",
+            }}>
+              <Icon size={16} /> {label} {count > 0 && <span style={{ marginLeft: "auto", background: "#C98A3D", color: "#14181F", fontSize: 10.5, padding: "1px 7px", borderRadius: 20, fontWeight: 800 }}>{count}</span>}
+            </button>
+          ))}
+        </div>
+        <div className="ggm-admin-divider" style={{ height: 1, background: "rgba(255,255,255,0.12)", margin: "16px 0" }} />
+        <button onClick={onExit} className="ggm-admin-navbtn" style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", borderRadius: 9, background: "transparent", border: "none", cursor: "pointer", color: "#C7C2B4", fontSize: 13.5, fontWeight: 600 }}>
           <LogOut size={16} /> Exit to site
         </button>
       </aside>
 
-      <main style={{ flex: 1, padding: "28px 30px", overflowX: "hidden" }}>
+      <main className="ggm-admin-main" style={{ flex: 1, padding: "28px 30px", overflowX: "hidden" }}>
         {adminTab === "overview" && (
           <div className="ggm-fade">
             <h1 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 30, margin: "0 0 20px" }}>OVERVIEW</h1>
