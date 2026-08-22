@@ -1047,7 +1047,7 @@ function AdminDashboard({ cars, leads, adminTab, setAdminTab, onExit, token, edi
               {leads.slice(0, 5).length === 0 ? <div style={{ fontSize: 13, color: "#8A8578" }}>No enquiries yet - once customers enquire on a car, they'll show up here.</div> :
                 leads.slice(0, 5).map(l => (
                   <div key={l.id} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid #EDE8DB", fontSize: 13 }}>
-                    <div><b>{l.name}</b> &middot; {l.carLabel}</div>
+                    <div><b>{l.name}</b> &middot; {l.car ? `${l.car.brand} ${l.car.model}` : "General enquiry"}</div>
                     <div style={{ color: "#8A8578" }}>{timeAgo(l.createdAt)}</div>
                   </div>
                 ))}
@@ -1115,8 +1115,13 @@ function AdminDashboard({ cars, leads, adminTab, setAdminTab, onExit, token, edi
                         <span style={{ fontSize: 11, background: l.type === "testdrive" ? "#E4EFE8" : "#F2EEE3", color: l.type === "testdrive" ? "#215A3F" : "#5B6B66", padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>
                           {l.type === "testdrive" ? "Test drive" : "Enquiry"}
                         </span>
+                        {l.source === "ai" && (
+                          <span style={{ fontSize: 11, background: "#EDE4F5", color: "#5A3E8A", padding: "2px 8px", borderRadius: 10, fontWeight: 700, display: "flex", alignItems: "center", gap: 3 }}>
+                            <Bot size={11} /> AI-captured
+                          </span>
+                        )}
                       </div>
-                      <div style={{ fontSize: 12.5, color: "#5B6B66", marginBottom: 6 }}>{l.carLabel} &middot; {timeAgo(l.createdAt)}</div>
+                      <div style={{ fontSize: 12.5, color: "#5B6B66", marginBottom: 6 }}>{l.car ? `${l.car.brand} ${l.car.model} (${l.car.stockNo})` : "General enquiry"} &middot; {timeAgo(l.createdAt)}</div>
                       <div style={{ fontSize: 13, color: "#3A3A36", marginBottom: 6 }}>{l.message}</div>
                       <div style={{ display: "flex", gap: 14, fontSize: 12.5, color: "#5B6B66" }}>
                         <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Phone size={12} />{l.phone}</span>

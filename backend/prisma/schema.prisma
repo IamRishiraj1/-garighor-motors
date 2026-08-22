@@ -38,13 +38,14 @@ model Car {
 
 model Lead {
   id        String   @id @default(cuid())
-  car       Car      @relation(fields: [carId], references: [id], onDelete: Cascade)
-  carId     String
+  car       Car?     @relation(fields: [carId], references: [id], onDelete: SetNull)
+  carId     String?
   name      String
   phone     String
   email     String?
   message   String
   type      String   @default("enquiry") // enquiry | testdrive
+  source    String   @default("form")    // form (manual Enquire button) | ai (chat assistant)
   status    String   @default("new")     // new | contacted | closed
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
